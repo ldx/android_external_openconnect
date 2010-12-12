@@ -33,9 +33,11 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <pwd.h>
-#include <sys/syslog.h>
 #include <sys/utsname.h>
 #include <sys/types.h>
+#ifndef ANDROID
+#include <sys/syslog.h>
+#endif
 #include <openssl/ui.h>
 #ifdef OPENCONNECT_LIBPROXY
 #include LIBPROXY_HDR
@@ -125,6 +127,30 @@ static struct option long_options[] = {
 	{"force-dpd", 1, 0, OPT_FORCE_DPD},
 	{NULL, 0, 0, 0},
 };
+
+#ifdef ANDROID_CHANGES
+static void do_setup(int argc, char **argv, struct openconnect_info *vpninfo)
+{
+	int i;
+
+	if (argc != 6 && argc != 3) {
+        android_log(PRG_ERR, "Parameter mismatch\n");
+        exit(1);
+	}
+
+	vpninfo->hostname = argv[0];
+	vpninfo->port = 443;
+	vpninfo->username = argv[1];
+	vpninfo->password = argv[2];
+	if (argc == 6) {
+		vpninfo->sslkey = argv[3];
+		vpninfo->cert = argv[4];
+		vpninfo->cafile = argv[5];
+	}
+
+	vpninfo->vpnc_script = "/system/bin/openconnect-up";
+}
+#endif
 
 void usage(void)
 {
@@ -244,6 +270,14 @@ int main(int argc, char **argv)
 	else
 		vpninfo->localname = "localhost";
 
+#ifdef ANDROID_CHANGES
+	if (open_control() < 0)
+		exit(1);
+	if (recv_cmd(&argc, &argv) < 0)
+		exit(1);
+	do_setup(argc, argv, vpninfo);
+    send_ack(argc);
+#else
 	while ((opt = getopt_long(argc, argv, "bC:c:Ddg:hi:k:K:lpP:Q:qSs:U:u:Vvx:",
 				  long_options, NULL))) {
 		if (opt < 0)
@@ -443,11 +477,16 @@ int main(int argc, char **argv)
 		fprintf(stderr, "No server specified\n");
 		usage();
 	}
+#endif
 
 	if (!vpninfo->sslkey)
 		vpninfo->sslkey = vpninfo->cert;
 
+#ifdef ANDROID_CHANGES
+	vpninfo->progress = android_write_progress;
+#else
 	vpninfo->progress = write_progress;
+#endif
 
 #ifdef OPENCONNECT_LIBPROXY
 	if (autoproxy)
@@ -496,7 +535,9 @@ int main(int argc, char **argv)
 		free(url);
 	}
 
-#ifdef SSL_UI
+#ifdef ANDROID_CHANGES
+	set_android_ui();
+#elif SSL_UI
 	set_openssl_ui();
 #endif
 
@@ -553,6 +594,12 @@ int main(int argc, char **argv)
 			exit(0);
 		}
 	}
+
+#ifdef ANDROID_CHANGES
+	close_control();
+    //set_my_uid();
+#endif
+
 	vpn_mainloop(vpninfo);
 	exit(1);
 }

@@ -363,12 +363,12 @@ static void set_script_env(struct openconnect_info *vpninfo)
 
 static int script_config_tun(struct openconnect_info *vpninfo)
 {
-	if (system(vpninfo->vpnc_script)) {
-		int e = errno;
-		vpninfo->progress(vpninfo, PRG_ERR,
-				  "Failed to spawn script '%s': %s\n",
-				  vpninfo->vpnc_script, strerror(e));
-		return -e;
+   if (system(vpninfo->vpnc_script)) {
+           int e = errno;
+                vpninfo->progress(vpninfo, PRG_ERR,
+                             "Failed to spawn script '%s': %s\n",
+                             vpninfo->vpnc_script, strerror(e));
+           return -e;
 	}
 	return 0;
 }
@@ -387,18 +387,21 @@ int setup_tun(struct openconnect_info *vpninfo)
 
 		if (socketpair(AF_UNIX, SOCK_DGRAM, 0, fds)) {
 			perror("socketpair");
+			vpninfo->progress(vpninfo, PRG_ERR, "can't create socketpair\n");
 			exit(1);
 		}
 		tun_fd = fds[0];
 		child = fork();
 		if (child < 0) {
 			perror("fork");
+			vpninfo->progress(vpninfo, PRG_ERR, "can't fork\n");
 			exit(1);
 		} else if (!child) {
 			close(tun_fd);
 			setenv_int("VPNFD", fds[1]);
-			execl("/bin/sh", "/bin/sh", "-c", vpninfo->vpnc_script, NULL);
+			execl("/system/bin/sh", "/system/bin/sh", "-c", vpninfo->vpnc_script, NULL);
 			perror("execl");
+			vpninfo->progress(vpninfo, PRG_ERR, "can't execl()\n");
 			exit(1);
 		}
 		close(fds[1]);
@@ -528,6 +531,7 @@ int setup_tun(struct openconnect_info *vpninfo)
 		}
 		if (tun_fd < 0) {
 			perror("open tun");
+			vpninfo->progress(vpninfo, PRG_ERR, "can't open tun device\n");
 			exit(1);
 		}
 		vpninfo->ifname = tun_name + 5;
@@ -535,6 +539,7 @@ int setup_tun(struct openconnect_info *vpninfo)
 		i = 1;
 		if (ioctl(tun_fd, TUNSIFHEAD, &i) < 0) {
 			perror("TUNSIFHEAD");
+			vpninfo->progress(vpninfo, PRG_ERR, "TUNSIFHEAD\n");
 			exit(1);
 		}
 #endif

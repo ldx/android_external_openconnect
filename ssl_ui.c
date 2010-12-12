@@ -24,6 +24,8 @@
 #include <openssl/ssl.h>
 #include <openssl/ui.h>
 
+#include "openconnect.h"
+
 /* OpenSSL UI method calls. These are just stubs, to show how it's done */
 /* While we can set user data on the calls from the TPM setup, we can't
    set it on the calls for PEM certificate passphrases, AFAICT. */
@@ -64,4 +66,3 @@ int set_openssl_ui(void)
 
 	return 0;
 }
-

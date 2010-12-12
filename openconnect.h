@@ -38,6 +38,14 @@
 #include LIBPROXY_HDR
 #endif
 
+#ifdef ANDROID_CHANGES
+#include <android/log.h>
+
+/* TUNSETIFF ifr flags from linux/if_tun.h */
+#define TUNSETIFF     _IOW('T', 202, int)
+#define IFF_TUN     0x0001
+#define IFF_NO_PI   0x1000
+#endif
 
 /****************************************************************************/
 
@@ -260,10 +268,17 @@ struct openconnect_info {
 	(*progress) (struct openconnect_info *vpninfo, int level, const char *fmt, ...);
 };
 
+#ifdef ANDROID_CHANGES
+#define PRG_ERR		ANDROID_LOG_ERROR
+#define PRG_INFO	ANDROID_LOG_INFO
+#define PRG_DEBUG	ANDROID_LOG_DEBUG
+#define PRG_TRACE	ANDROID_LOG_DEBUG
+#else
 #define PRG_ERR		0
 #define PRG_INFO	1
 #define PRG_DEBUG	2
 #define PRG_TRACE	3
+#endif
 
 /* Packet types */
 
@@ -280,6 +295,18 @@ struct openconnect_info {
 #define method_const const
 #else
 #define method_const
+#endif
+
+#ifdef ANDROID_CHANGES
+void android_log(int, const char *, ...);
+void android_write_progress(struct openconnect_info *, int, const char *, ...);
+int set_android_ui(void);
+int open_control(void);
+int close_control(void);
+int recv_cmd(int *, char ***);
+int send_ack(int);
+int send_request(char *);
+int set_my_uid();
 #endif
 
 /****************************************************************************/
