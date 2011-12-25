@@ -69,3 +69,29 @@ LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE := openconnect
 LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
 include $(BUILD_EXECUTABLE)
+
+# connect script
+include $(CLEAR_VARS)
+
+LOCAL_MODULE := openconnect-up
+LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_CLASS := EXECUTABLES
+LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
+LOCAL_SRC_FILES := openconnect-up
+
+include $(BUILD_PREBUILT)
+
+# android vpn agent
+include $(CLEAR_VARS)
+
+LOCAL_MODULE := openconnect-agent
+LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_PATH := $(TARGET_OUT_EXECUTABLES)
+LOCAL_SRC_FILES := ssl.c http.c version.c auth.c library.c android.c
+LOCAL_CFLAGS := $(common_CFLAGS)
+LOCAL_C_INCLUDES := $(common_C_INCLUDES)
+
+LOCAL_SHARED_LIBRARIES := $(common_SHARED_LIBRARIES) libssl libcrypto libz
+LOCAL_STATIC_LIBRARIES := libxml2 liblog
+
+include $(BUILD_EXECUTABLE)

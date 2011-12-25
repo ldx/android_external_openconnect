@@ -1,0 +1,94 @@
+#!/system/bin/sh
+
+#* reason                       -- why this script was called, one of: pre-init connect disconnect
+#* VPNGATEWAY                   -- vpn gateway address (always present)
+#* TUNDEV                       -- tunnel device (always present)
+#* INTERNAL_IP4_ADDRESS         -- address (always present)
+#* INTERNAL_IP4_NETMASK         -- netmask (often unset)
+#* INTERNAL_IP4_NETMASKLEN      -- netmask length (often unset)
+#* INTERNAL_IP4_NETADDR         -- address of network (only present if netmask is set)
+#* INTERNAL_IP4_DNS             -- list of dns serverss
+#* INTERNAL_IP4_NBNS            -- list of wins servers
+#* CISCO_DEF_DOMAIN             -- default domain name
+#* CISCO_BANNER                 -- banner from server
+#* CISCO_SPLIT_INC              -- number of networks in split-network-list
+#* CISCO_SPLIT_INC_%d_ADDR      -- network address
+#* CISCO_SPLIT_INC_%d_MASK      -- subnet mask (for example: 255.255.255.0)
+#* CISCO_SPLIT_INC_%d_MASKLEN   -- subnet masklen (for example: 24)
+#* CISCO_SPLIT_INC_%d_PROTOCOL  -- protocol (often just 0)
+#* CISCO_SPLIT_INC_%d_SPORT     -- source port (often just 0)
+#* CISCO_SPLIT_INC_%d_DPORT     -- destination port (often just 0)
+
+logger()
+{
+    /system/bin/log -p i -t openconnect-up $1
+}
+
+logger "reason: $reason"
+
+IFCONFIG="/system/bin/ifconfig"
+ROUTE="/system/bin/route"
+IPUP="/etc/ppp/ip-up-vpn"
+SETPROP="/system/bin/setprop"
+
+case "$reason" in
+	pre-init)
+        exit 0
+		;;
+	connect)
+        ACTION="add"
+		;;
+	disconnect)
+        ACTION="del"
+		;;
+	*)
+		exit 1
+		;;
+esac
+
+#INTERNAL_IP4_DNS="1.1.1.1 2.2.2.2 3.3.3.3"
+#VPNGATEWAY="1.2.3.4"
+#CISCO_SPLIT_INC=2
+#CISCO_SPLIT_INC_0_ADDR="11.11.11.11"
+#CISCO_SPLIT_INC_0_MASK="255.255.255.0"
+#CISCO_SPLIT_INC_1_ADDR="22.22.22.22"
+#CISCO_SPLIT_INC_1_MASK="255.255.0.0"
+
+#set -e
+
+if [ "$ACTION" = "add" ]; then
+    if [ -z "$INTERNAL_IP4_NETMASK" ]; then
+        INTERNAL_IP4_NETMASK="255.255.255.255"
+    fi
+    $IFCONFIG $TUNDEV up
+    $IFCONFIG $TUNDEV $INTERNAL_IP4_ADDRESS $INTERNAL_IP4_ADDRESS netmask $INTERNAL_IP4_NETMASK
+else
+    $IFCONFIG $TUNDEV down
+fi
+
+i=0
+while [ "$i" -lt "$CISCO_SPLIT_INC" ]; do
+    eval addr="\${CISCO_SPLIT_INC_${i}_ADDR}"
+    eval mask="\${CISCO_SPLIT_INC_${i}_MASK}"
+    logger "$ROUTE $ACTION -net $addr netmask $mask gw $INTERNAL_IP4_ADDRESS"
+	$ROUTE $ACTION -net $addr netmask $mask gw $INTERNAL_IP4_ADDRESS
+	i=$(($i+1))
+done
+
+if [ "$ACTION" = "add" ]; then
+    i=1
+    for dns in $INTERNAL_IP4_DNS; do
+        logger "$SETPROP \"vpn.dns${i}\" \"$dns\""
+        $SETPROP "vpn.dns${i}" "$dns"
+        i=$(($i+1))
+        if [ "$i" -eq "3" ]; then
+            break
+        fi
+    done
+
+logger "$SETPROP \"vpn.status\" \"ok\""
+$SETPROP "vpn.status" "ok"
+
+fi
+
+exit 0
