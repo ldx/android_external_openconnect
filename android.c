@@ -20,6 +20,11 @@
 #define OC_SCRIPT "/system/xbin/openconnect-up"
 #define OC_USER "vpn"
 
+#define TUN_MAJOR 10
+#define TUN_MINOR 200
+#define TUN_DIR "/dev/net"
+#define TUN_NOD "/dev/net/tun"
+
 static const char *oc_username = NULL;
 static const char *oc_password = NULL;
 static char *oc_cafile = NULL;
@@ -583,6 +588,27 @@ static void handle_child(int sig)
     } while (pid > 0);
 }
 
+static int create_dev(void)
+{
+    /* This might fail if the directory already exists. */
+    if (mkdir(TUN_DIR, S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IXGRP |
+              S_IROTH | S_IXOTH) < 0 && errno != EEXIST) {
+        android_log(ANDROID_LOG_ERROR, "mkdir %s: %s\n", TUN_DIR,
+                    strerror(errno));
+        return -1;
+    }
+
+    dev_t dev = makedev(TUN_MAJOR, TUN_MINOR);
+    if (mknod(TUN_NOD, S_IFCHR | S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH,
+              dev) < 0) {
+        android_log(ANDROID_LOG_ERROR, "mknod %s: %s\n", TUN_NOD,
+                    strerror(errno));
+        return -1;
+    }
+
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     int ret = -1;
@@ -592,6 +618,11 @@ int main(int argc, char **argv)
 
     if (system("modprobe tun") < 0) {
         android_log(ANDROID_LOG_ERROR, "modprobing tun failed\n");
+        goto out;
+    }
+
+    if (create_dev() < 0) {
+        android_log(ANDROID_LOG_ERROR, "creating device node failed\n");
         goto out;
     }
 
