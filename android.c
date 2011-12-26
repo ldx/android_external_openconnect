@@ -600,7 +600,7 @@ static int create_dev(void)
 
     dev_t dev = makedev(TUN_MAJOR, TUN_MINOR);
     if (mknod(TUN_NOD, S_IFCHR | S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH,
-              dev) < 0) {
+              dev) < 0 && errno != EEXIST) {
         android_log(ANDROID_LOG_ERROR, "mknod %s: %s\n", TUN_NOD,
                     strerror(errno));
         return -1;
