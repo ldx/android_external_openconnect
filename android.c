@@ -157,20 +157,6 @@ static int send_req(const char *req)
     return 0;
 }
 
-static int validate_peer_cert(struct openconnect_info *vpninfo,
-                              X509 *peer_cert, const char *reason)
-{
-    int ret;
-    char fingerprint[256];
-
-    android_log(ANDROID_LOG_DEBUG, "validate_peer_cert()\n");
-
-    ret = openconnect_get_cert_sha1(vpninfo, peer_cert, fingerprint);
-
-    /* XXX we don't check the server certificate */
-    return 0;
-}
-
 static int write_new_config(struct openconnect_info *vpninfo, char *buf, int buflen)
 {
     android_log(ANDROID_LOG_DEBUG, "write_new_config()\n");
@@ -187,6 +173,133 @@ static int send_form_fragment(char *str)
     }
 
     return 0;
+}
+
+static int ignore_cert_error(char *certname, char *certfp, const char *error)
+{
+    int ret = -1;
+    char message[512];
+    snprintf(message,
+             sizeof(message) - 1,
+             "M Error verifying certificate %s (%s): %s. "
+             "Do you want to accept it?", certname, certfp, error);
+    if (send_form_fragment(message))
+        return ret;
+
+    snprintf(message, sizeof(message) - 1, "S answer/Answer:=[yes/Yes|no/No]");
+    if (send_form_fragment(message))
+        return ret;
+
+    if (send_form_fragment("E"))
+        return ret;
+
+    int num;
+    char **msg;
+    if (recv_cmd(&num, &msg) < 0) {
+        android_log(ANDROID_LOG_ERROR, "%s: recv_cmd() failed\n", __FUNCTION__);
+        return ret;
+    }
+
+    android_log(ANDROID_LOG_DEBUG, "%s: got %d options\n", __FUNCTION__, num);
+
+    int n;
+    for (n = 0; n < num; n++) {
+        char *m = msg[n];
+        android_log(ANDROID_LOG_DEBUG, "checking from opt %s\n", m);
+        if (strlen(m) < 3) {
+            android_log(ANDROID_LOG_ERROR, "invalid option %s\n", m);
+            continue;
+        }
+
+        char *name, *val;
+        switch (m[0]) {
+            case 'S':
+                name = &m[2];
+                val = strchr(name, '=');
+                if (!val) {
+                    android_log(ANDROID_LOG_ERROR, "invalid opt %s\n", name);
+                    break;
+                }
+                *val = '\0';
+                val++;
+                if (!strcmp(name, "answer") && !strcmp(val, "yes"))
+                    ret = 0;
+                break;
+            default:
+                break;
+        }
+    }
+
+    send_ack(num);
+
+    free_cmd(num, msg);
+
+    return ret;
+}
+
+static int validate_peer_cert(struct openconnect_info *vpninfo,
+                              X509 *cert, const char *reason)
+{
+    int ret = -1;
+    char fingerprint[256];
+
+    android_log(ANDROID_LOG_DEBUG, "validate_peer_cert()\n");
+
+    openconnect_get_cert_sha1(vpninfo, cert, fingerprint);
+
+    X509_STORE *store = NULL;
+    X509_LOOKUP *lookup = NULL;
+    X509_STORE_CTX *store_ctx = NULL;
+
+    store = X509_STORE_new();
+    if (!store)
+        goto out;
+
+    lookup = X509_STORE_add_lookup(store, X509_LOOKUP_file());
+    if (!lookup)
+        goto out;
+
+    X509_STORE_load_locations(store, oc_cafile, NULL);
+    X509_STORE_set_default_paths(store);
+    X509_LOOKUP_load_file(lookup, oc_cafile, X509_FILETYPE_PEM);
+
+    lookup = X509_STORE_add_lookup(store, X509_LOOKUP_hash_dir());
+    if (!lookup)
+        goto out;
+
+    store_ctx = X509_STORE_CTX_new();
+    if (!store_ctx)
+        goto out;
+
+    X509_STORE_CTX_init(store_ctx, store, cert, NULL);
+    X509_STORE_CTX_set_flags(store_ctx, 0);
+
+    if (X509_verify_cert(store_ctx) == 1) {
+        android_log(ANDROID_LOG_DEBUG, "peer certificate %s looks okay\n",
+                    fingerprint);
+        ret = 0;
+    } else {
+        const char *err = X509_verify_cert_error_string(store_ctx->error);
+        android_log(ANDROID_LOG_ERROR,
+                    "peer certificate %s verification failed: %s\n",
+                    fingerprint, err);
+        char buf[256];
+        ret = ignore_cert_error(X509_NAME_oneline(X509_get_subject_name(cert),
+                                                  buf, sizeof(buf)),
+                                fingerprint, err);
+    }
+
+out:
+    if (store_ctx)
+        X509_STORE_CTX_free(store_ctx);
+    if (store) {
+        X509_STORE_free(store);
+        store = NULL;
+    }
+
+    android_log(ANDROID_LOG_DEBUG,
+                "peer certificate validation result: %d\n", ret);
+    return ret;
 }
 
 static int send_form_fields(struct oc_auth_form *form)
