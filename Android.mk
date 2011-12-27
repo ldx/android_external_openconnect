@@ -65,7 +65,7 @@ LOCAL_STATIC_LIBRARIES := libxml2 liblog
 #LOCAL_LDLIBS += -ldl
 #LOCAL_PRELINK_MODULE := false
 
-LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_TAGS := eng
 LOCAL_MODULE := openconnect
 LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
 include $(BUILD_EXECUTABLE)
@@ -74,7 +74,7 @@ include $(BUILD_EXECUTABLE)
 include $(CLEAR_VARS)
 
 LOCAL_MODULE := openconnect-up
-LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_TAGS := eng
 LOCAL_MODULE_CLASS := EXECUTABLES
 LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
 LOCAL_SRC_FILES := openconnect-up
@@ -85,7 +85,7 @@ include $(BUILD_PREBUILT)
 include $(CLEAR_VARS)
 
 LOCAL_MODULE := openconnect-agent
-LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_TAGS := eng
 LOCAL_MODULE_PATH := $(TARGET_OUT_EXECUTABLES)
 LOCAL_SRC_FILES := ssl.c http.c version.c auth.c library.c android.c
 LOCAL_CFLAGS := $(common_CFLAGS)
