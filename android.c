@@ -53,12 +53,12 @@ static int open_control(void)
     int i;
 
     if ((i = android_get_control_socket("openconnect")) == -1) {
-        android_log(ANDROID_LOG_ERROR, "No control socket");
+        android_log(ANDROID_LOG_ERROR, "no control socket");
         return -1;
     }
-    android_log(ANDROID_LOG_DEBUG, "Waiting for control socket");
+    android_log(ANDROID_LOG_DEBUG, "waiting for control socket");
     if (listen(i, 1) == -1 || (control = accept(i, NULL, 0)) == -1) {
-        android_log(ANDROID_LOG_ERROR, "Cannot get control socket");
+        android_log(ANDROID_LOG_ERROR, "cannot get control socket");
         exit(-1);
     }
     close(i);
@@ -82,7 +82,7 @@ static int recv_cmd(int *argc, char ***argv)
     for (i = 0; i < 255; ++i) {
         unsigned char length;
         if (recv(control, &length, 1, 0) != 1) {
-            android_log(ANDROID_LOG_ERROR, "Cannot get argument length");
+            android_log(ANDROID_LOG_ERROR, "cannot get argument length");
             return -1;
         }
         if (length == 0xFF) {
@@ -95,15 +95,14 @@ static int recv_cmd(int *argc, char ***argv)
                 if (n > 0) {
                     offset += n;
                 } else {
-                    android_log(ANDROID_LOG_ERROR, "Cannot get argument value");
+                    android_log(ANDROID_LOG_ERROR, "cannot get argument value");
                     return -1;
                 }
             }
             args[i][length] = 0;
-            android_log(ANDROID_LOG_DEBUG, "Argument %d: %s", i, args[i]);
         }
     }
-    android_log(ANDROID_LOG_DEBUG, "Received %d argument(s)", i);
+    android_log(ANDROID_LOG_DEBUG, "received %d argument(s)", i);
 
     *argc = i;
     *argv = args;
@@ -149,7 +148,6 @@ static int send_req(const char *req)
         rv = send(control, req + pos, n, 0);
         if (rv <= 0)
             return -1;
-        android_log(ANDROID_LOG_DEBUG, "sent %s (%d)", req + pos, rv);
 
         pos += rv;
     }
@@ -165,8 +163,6 @@ static int write_new_config(struct openconnect_info *vpninfo, char *buf, int buf
 
 static int send_form_fragment(char *str)
 {
-    android_log(ANDROID_LOG_DEBUG, "%s: request is %s\n", __FUNCTION__, str);
-
     if (send_req(str) < 0) {
         android_log(ANDROID_LOG_ERROR, "%s failed\n", __FUNCTION__);
         return -1;
@@ -205,7 +201,6 @@ static int ignore_cert_error(char *certname, char *certfp, const char *error)
     int n;
     for (n = 0; n < num; n++) {
         char *m = msg[n];
-        android_log(ANDROID_LOG_DEBUG, "checking from opt %s\n", m);
         if (strlen(m) < 3) {
             android_log(ANDROID_LOG_ERROR, "invalid option %s\n", m);
             continue;
@@ -217,7 +212,8 @@ static int ignore_cert_error(char *certname, char *certfp, const char *error)
                 name = &m[2];
                 val = strchr(name, '=');
                 if (!val) {
-                    android_log(ANDROID_LOG_ERROR, "invalid opt %s\n", name);
+                    android_log(ANDROID_LOG_ERROR, "invalid option %s\n",
+                                name);
                     break;
                 }
                 *val = '\0';
@@ -333,8 +329,6 @@ static int send_form_fields(struct oc_auth_form *form)
 
     struct oc_form_opt *opt;
     for (opt = form->opts; opt; opt = opt->next) {
-        android_log(ANDROID_LOG_DEBUG, "opt type %d name %s label %s value %s\n",
-                    opt->type, opt->name, opt->label, opt->value);
         if (opt->type == OC_FORM_OPT_SELECT) {
             struct oc_form_opt_select *sel = (void *)opt;
             int i;
@@ -342,13 +336,6 @@ static int send_form_fields(struct oc_auth_form *form)
             snprintf(message, sizeof(message) - 1, "S %s/%s=[",
                      opt->name, opt->label);
             for (i = 0; i < sel->nr_choices; i++) {
-                android_log(ANDROID_LOG_DEBUG, "opt select name %s label %s auth_type "
-                            "%s override_name %s override_label %s\n",
-                            sel->choices[i].name,
-                            sel->choices[i].label,
-                            sel->choices[i].auth_type,
-                            sel->choices[i].override_name,
-                            sel->choices[i].override_label);
                 size_t len = strlen(message);
                 snprintf(message + len,
                          sizeof(message) - 1 - len,
@@ -359,20 +346,16 @@ static int send_form_fields(struct oc_auth_form *form)
             }
             size_t len = strlen(message);
             snprintf(message + len, sizeof(message) - 1 - len, "]");
-            android_log(ANDROID_LOG_DEBUG, "sending option '%s'\n", message);
             if (send_form_fragment(message))
                 return -1;
         } else if (opt->type != OC_FORM_OPT_HIDDEN) {
             if (!strcasecmp(opt->name, "password") &&
                 opt->type == OC_FORM_OPT_PASSWORD) {
-                android_log(ANDROID_LOG_DEBUG, "setting password in form\n");
                 opt->value = strdup(oc_password);
             } else if (!strcasecmp(opt->name, "username")) {
-                android_log(ANDROID_LOG_DEBUG, "setting username in form\n");
                 opt->value = strdup(oc_username);
             }
 
-            android_log(ANDROID_LOG_DEBUG, "sending option '%s'\n", message);
             char type = opt->type == OC_FORM_OPT_PASSWORD ? 'P' : 'T';
             snprintf(message, sizeof(message) - 1, "%c %s/%s=%s",
                      type, opt->name, opt->label, opt->value ? opt->value : "");
@@ -400,13 +383,9 @@ static void set_form_opt(struct oc_auth_form *form, int type, char *name)
 
     struct oc_form_opt *opt;
     for (opt = form->opts; opt; opt = opt->next) {
-        android_log(ANDROID_LOG_DEBUG, "opt type %d name %s label %s is: val %s\n",
-                    opt->type, opt->name, opt->label, opt->value);
         if (opt->type != type || strcmp(opt->name, name))
             continue;
         opt->value = strdup(val);
-        android_log(ANDROID_LOG_DEBUG, "setting opt type %d name %s label %s val %s\n",
-                    opt->type, opt->name, opt->label, opt->value);
     }
 }
 
@@ -424,7 +403,6 @@ static int recv_form_values(struct oc_auth_form *form)
     int n;
     for (n = 0; n < num; n++) {
         char *m = msg[n];
-        android_log(ANDROID_LOG_DEBUG, "checking from opt %s\n", m);
         if (strlen(m) < 3) {
             android_log(ANDROID_LOG_ERROR, "invalid option %s\n", m);
             continue;
@@ -480,7 +458,7 @@ static int do_setup(int argc, char **argv, struct openconnect_info *vpninfo)
 	int i;
 
 	if (argc != 6 && argc != 3) {
-        android_log(ANDROID_LOG_ERROR, "Parameter mismatch\n");
+        android_log(ANDROID_LOG_ERROR, "parameter mismatch\n");
         return -1;
 	}
 
