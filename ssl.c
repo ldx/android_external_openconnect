@@ -50,6 +50,10 @@
 #include <openssl/pkcs12.h>
 #include <openssl/x509v3.h>
 
+#ifdef ANDROID
+#include "keystore_get.h"
+#endif
+
 #include "openconnect-internal.h"
 
 /* OSX < 1.6 doesn't have AI_NUMERICSERV */
@@ -300,11 +304,63 @@ static int reload_pem_cert(struct openconnect_info *vpninfo)
 	return 0;
 }
 
+#ifdef ANDROID
+static BIO *BIO_from_keystore(const char *key)
+{
+	BIO *bio = NULL;
+	char value[KEYSTORE_MESSAGE_SIZE];
+	int length = keystore_get(key, strlen(key), value);
+	if (length != -1 && (bio = BIO_new(BIO_s_mem())) != NULL) {
+		BIO_write(bio, value, length);
+	}
+	return bio;
+}
+#endif
+
 static int load_certificate(struct openconnect_info *vpninfo)
 {
 	vpn_progress(vpninfo, PRG_TRACE,
 		     _("Using certificate file %s\n"), vpninfo->cert);
 
+#ifdef ANDROID
+	BIO *b = BIO_from_keystore(vpninfo->cert);
+	if (!b)
+		return -ENOMEM;
+
+	vpninfo->cert_x509 = PEM_read_bio_X509(b, NULL, NULL, NULL);
+	BIO_free(b);
+
+	if (!vpninfo->cert_x509 ||
+		!SSL_CTX_use_certificate(vpninfo->https_ctx, vpninfo->cert_x509)) {
+		vpn_progress(vpninfo, PRG_ERR,
+					 _("Loading certificate failed\n"));
+		if (vpninfo->cert_x509) {
+			X509_free(vpninfo->cert_x509);
+			vpninfo->cert_x509 = NULL;
+		}
+		return -ENOENT;
+	}
+
+	EVP_PKEY *evp = NULL;
+	b = BIO_from_keystore(vpninfo->sslkey);
+	if (b) {
+		evp = PEM_read_bio_PrivateKey(b, NULL, NULL, NULL);
+		BIO_free(b);
+	}
+
+	if (!evp || !SSL_CTX_use_PrivateKey(vpninfo->https_ctx, evp)) {
+		report_ssl_errors(vpninfo);
+		vpn_progress(vpninfo, PRG_ERR,
+					 _("Loading private key failed\n"));
+		if (evp)
+			EVP_PKEY_free(evp);
+		X509_free(vpninfo->cert_x509);
+		vpninfo->cert_x509 = NULL;
+		return -ENOENT;
+	}
+
+	EVP_PKEY_free(evp);
+#else
 	if (vpninfo->cert_type == CERT_TYPE_PKCS12 ||
 	    vpninfo->cert_type == CERT_TYPE_UNKNOWN) {
 		FILE *f;
@@ -409,6 +465,7 @@ static int load_certificate(struct openconnect_info *vpninfo)
 			     _("Loading private key failed (see above errors)\n"));
 		return -EINVAL;
 	}
+#endif
 	return 0;
 }
 
@@ -1069,6 +1126,7 @@ int openconnect_open_https(struct openconnect_info *vpninfo)
 		SSL_CTX_set_default_verify_paths(vpninfo->https_ctx);
 
 		if (vpninfo->cafile) {
+#ifndef ANDROID
 			if (!SSL_CTX_load_verify_locations(vpninfo->https_ctx, vpninfo->cafile, NULL)) {
 				vpn_progress(vpninfo, PRG_ERR,
 					     _("Failed to open CA file '%s'\n"),
@@ -1077,8 +1135,54 @@ int openconnect_open_https(struct openconnect_info *vpninfo)
 				close(ssl_sock);
 				return -EINVAL;
 			}
-		}
+#else
+			BIO *bio = BIO_from_keystore(vpninfo->cafile);
+			if (!bio) {
+				vpn_progress(vpninfo, PRG_ERR,
+							 _("Failed to open CA file '%s'\n"),
+							 vpninfo->cafile);
+				report_ssl_errors(vpninfo);
+				close(ssl_sock);
+				return -ENOMEM;
+			}
 
+			STACK_OF(X509_INFO) *stack;
+			stack = PEM_X509_INFO_read_bio(bio, NULL, NULL, NULL);
+			BIO_free(bio);
+
+			if (!stack) {
+				vpn_progress(vpninfo, PRG_ERR,
+							 _("Failed to open CA file '%s'\n"),
+							 vpninfo->cafile);
+				report_ssl_errors(vpninfo);
+				close(ssl_sock);
+				return -ENOMEM;
+			}
+
+			X509_STORE *cert_ctx = X509_STORE_new();
+			if (cert_ctx == NULL) {
+				vpn_progress(vpninfo, PRG_ERR,
+							 _("X509_STORE_new failed\n"));
+				report_ssl_errors(vpninfo);
+				close(ssl_sock);
+				return -ENOMEM;
+			}
+
+			int i;
+			for (i = 0; i < sk_X509_INFO_num(stack); ++i) {
+				X509_INFO *info = sk_X509_INFO_value(stack, i);
+				if (info->x509) {
+					X509_STORE_add_cert(cert_ctx, info->x509);
+				}
+				if (info->crl) {
+					X509_STORE_add_crl(cert_ctx, info->crl);
+				}
+			}
+			sk_X509_INFO_pop_free(stack, X509_INFO_free);
+
+			SSL_CTX_set_cert_store(vpninfo->https_ctx, cert_ctx);
+#endif
+		}
 	}
 	https_ssl = SSL_new(vpninfo->https_ctx);
 	workaround_openssl_certchain_bug(vpninfo, https_ssl);
