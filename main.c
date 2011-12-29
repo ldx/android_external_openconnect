@@ -158,7 +158,7 @@ static void usage(void)
 	printf("  -c, --certificate=CERT          %s\n", _("Use SSL client certificate CERT"));
 	printf("  -e, --cert-expire-warning=DAYS  %s\n", _("Warn when certificate lifetime < DAYS"));
 	printf("  -k, --sslkey=KEY                %s\n", _("Use SSL private key file KEY"));
-	printf("  -K, --key-type=TYPE             %s\n", _("Private key type (PKCS#12 / TPM / PEM)"));
+	printf("  -K, --key-type=TYPE             %s\n", _("Private key type (PKCS#12 / TPM / PEM / KEYSTORE)"));
 	printf("  -C, --cookie=COOKIE             %s\n", _("Use WebVPN cookie COOKIE"));
 	printf("      --cookie-on-stdin           %s\n", _("Read cookie from standard input"));
 	printf("  -d, --deflate                   %s\n", _("Enable compression (default)"));
@@ -359,6 +359,8 @@ int main(int argc, char **argv)
 				vpninfo->cert_type = CERT_TYPE_TPM;
 			} else if (!strcasecmp(optarg, "PEM")) {
 				vpninfo->cert_type = CERT_TYPE_PEM;
+			} else if (!strcasecmp(optarg, "KEYSTORE")) {
+				vpninfo->cert_type = CERT_TYPE_KEYSTORE;
 			} else {
 				fprintf(stderr, _("Unknown certificate type '%s'\n"),
 					optarg);

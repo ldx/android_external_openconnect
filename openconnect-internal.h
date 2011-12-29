@@ -91,6 +91,7 @@ struct split_include {
 #define CERT_TYPE_PEM		1
 #define CERT_TYPE_PKCS12	2
 #define CERT_TYPE_TPM		3
+#define CERT_TYPE_KEYSTORE	4
 
 struct openconnect_info {
 	char *redirect_url;
